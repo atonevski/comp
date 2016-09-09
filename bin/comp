@@ -1,0 +1,350 @@
+#!/usr/bin/env ruby
+# encoding: utf-8
+
+require 'gli'
+
+require 'active_record'
+require 'active_support/hash_with_indifferent_access'
+require 'yaml'
+require 'spreadsheet'
+require 'writeexcel'
+require 'axlsx'
+
+begin # XXX: Remove this begin/rescue before distributing your app
+require 'comp'
+rescue LoadError
+  STDERR.puts "In development, you need to use `bundle exec bin/comp` to run your app"
+  STDERR.puts "At install-time, RubyGems will make sure lib, etc. are in the load path"
+  STDERR.puts "Feel free to remove this message from bin/comp now"
+  exit 64
+end
+
+include GLI::App
+
+# some constants
+RE_PERIOD   = /^(\d{4}-\d\d-\d\d)\s+(\d{4}-\d\d-\d\d)$/
+RE_CRITERIA = /^(terminals?|agents?|all)\s*(!?)\s*((\d+(,\s*|\s*))*)$/i
+RE_PERCENT  = /^(share|raise)$/i
+YMD_FMT     = '%Y-%m-%d'
+RE_YMD      = /^\d{4}-\d\d-\d\d$/
+
+program_desc 'Compare sales for a period and other criteria'
+
+version Comp::VERSION
+
+# config active record
+dbconfig_file = File.expand_path '../../config/db.yml', __FILE__
+dbconfig = ActiveSupport::HashWithIndifferentAccess.new YAML::load File.open dbconfig_file
+ActiveRecord::Base.establish_connection dbconfig[:development]
+
+# some helper functions to avoid module name space notation
+#
+
+# truncate string with given length 
+def strunc(s, n)
+  if s.length <= n
+    s
+  else
+    s.gsub(/^(.{,#{n - 3}}).*$/, '\1...')
+  end
+end
+
+# thou separated
+def thou_sep(n)
+  n = n.to_s
+  n.gsub /(\d+?)(?=(\d{3})+(\D|$))/, '\1,'
+end
+
+subcommand_option_handling :normal
+arguments :strict
+
+desc 'Describe some switch here'
+switch [:s,:switch]
+
+desc 'Describe some flag here'
+default_value 'the default'
+arg_name 'The name of the argument'
+flag [:f,:flagname]
+
+desc 'Compare period'
+
+command :period do |c|
+  c.action do |global_opts, opts, args|
+    puts "Last update: #{ Sale.select('MAX(date) AS date')[0].date }"
+
+    base_line = { }
+    
+    print "Base line period: "
+    s = STDIN.gets.strip
+    raise "Invalid period (#{ s }): yyyy-mm-dd yyyy-mm-dd" unless s =~ RE_PERIOD
+    base_line[:from]  = Date.parse Regexp.last_match[1]
+    base_line[:to]    = Date.parse Regexp.last_match[2]
+    raise "From > to error" unless base_line[:from] <= base_line[:to]
+    puts "From: #{ base_line[:from].strftime YMD_FMT } " +
+          "To: #{ base_line[:to].strftime YMD_FMT }"
+    
+    print "Base line criteria: "
+    s = STDIN.gets.strip
+    raise "Invalid criteria (#{s}): agent(s)|terminal(s) [!]nnnn..." unless s =~ RE_CRITERIA
+    base_line[:criteria]           = { }
+    base_line[:criteria][:key]     = Regexp.last_match[1]
+    base_line[:criteria][:exclude] = Regexp.last_match[2] == '!'
+    base_line[:criteria][:items]   = Regexp.last_match[3].split(/, |\s+/).map { |e| e.to_i }
+
+    sales = Comp.get_sales(base_line)
+    instants_sales = sales.inject([0, 0]) do |t, s| 
+      if s.is_instant == 1
+        t[0] += s.sales.to_i
+        t[1] += s.qty.to_i
+      end
+      t
+    end
+    total_sales = sales.inject(0) { |t, s| t + s.sales.to_i }
+    base_line[:sales]           = sales
+    base_line[:instants_sales]  = instants_sales
+    base_line[:total_sales]     = total_sales
+
+    # print base line
+    base_line[:sales].each do |s|
+      printf "%2d %15s %10s %9s\n", s.game_id, strunc(s.name, 15),
+              thou_sep(s.sales.to_i), thou_sep(s.qty.to_i)
+    end
+    printf "%18s %10s %9s\n", 'инстанти', thou_sep(instants_sales[0]),
+            thou_sep(instants_sales[1])
+    printf "%18s %10s\n", 'вкупно', thou_sep(total_sales)
+
+    # compare with
+    compare_to = { }
+    print "Period: "
+    s = STDIN.gets.strip
+    raise "Invalid period (#{ s }): yyyy-mm-dd yyyy-mm-dd" unless s =~ RE_PERIOD
+    compare_to[:from]  = Date.parse Regexp.last_match[1]
+    compare_to[:to]    = Date.parse Regexp.last_match[2]
+    raise "From > to error" unless base_line[:from] <= base_line[:to]
+    puts "From: #{ compare_to[:from].strftime YMD_FMT } " +
+          "To: #{ compare_to[:to].strftime YMD_FMT }"
+    
+    print "Criteria: "
+    s = STDIN.gets.strip
+    raise "Invalid criteria (#{s}): agent(s)|terminal(s) [!]nnnn..." unless s =~ RE_CRITERIA
+    compare_to[:criteria]           = { }
+    compare_to[:criteria][:key]     = Regexp.last_match[1]
+    compare_to[:criteria][:exclude] = Regexp.last_match[2] == '!'
+    compare_to[:criteria][:items]   = Regexp.last_match[3].split(/, |\s+/).map { |e| e.to_i }
+
+    print "Percent (share|raise): "
+    s = STDIN.gets.strip
+    raise "Invalid percent method (#{s}): share|raise" unless s =~ RE_PERCENT
+    compare_to[:percent] = s
+
+    sales = Comp.get_sales(compare_to)
+    instants_sales = sales.inject([0, 0]) do |t, s| 
+      if s.is_instant == 1
+        t[0] += s.sales.to_i
+        t[1] += s.qty.to_i
+      end
+      t
+    end
+    total_sales = sales.inject(0) { |t, s| t + s.sales.to_i }
+    compare_to[:sales]           = sales
+    compare_to[:instants_sales]  = instants_sales
+    compare_to[:total_sales]     = total_sales
+
+    # print base line
+    compare_to[:sales].each do |s|
+      printf "%2d %15s %10s %9s", s.game_id, strunc(s.name, 15),
+              thou_sep(s.sales.to_i), thou_sep(s.qty.to_i)
+      game_id = s[:game_id]
+      i = base_line[:sales].index { |s| s[:game_id] == game_id }
+      if i
+        if compare_to[:percent] == 'raise'
+          perc = 100.0 * (s.sales - base_line[:sales][i].sales) / base_line[:sales][i].sales
+          print thou_sep(sprintf(" %8.2f\n", perc))
+        else
+          perc = 100.0 * s.sales / (s.sales + base_line[:sales][i].sales)
+          print thou_sep(sprintf(" %8.2f\n", perc))
+        end
+      else
+        print "\n"
+      end
+    end
+
+    printf "%18s %10s %9s", 'инстанти', thou_sep(compare_to[:instants_sales][0]),
+            thou_sep(compare_to[:instants_sales][1])
+    if compare_to[:percent] == 'raise'
+      perc = 100.0 * (compare_to[:instants_sales][0] - base_line[:instants_sales][0]) /
+                base_line[:instants_sales][0]
+      print thou_sep(sprintf(" %8.2f\n", perc))
+      printf "%18s %10s", 'вкупно', thou_sep(compare_to[:total_sales])
+      perc = 100.0 * (compare_to[:total_sales] - base_line[:total_sales]) /
+                base_line[:total_sales]
+      print thou_sep(sprintf("           %8.2f\n", perc))
+    else
+      perc = 100.0 * compare_to[:instants_sales][0] /
+                (compare_to[:instants_sales][0] + base_line[:instants_sales][0])
+      print thou_sep(sprintf(" %8.2f\n", perc))
+      printf "%18s %10s", 'вкупно', thou_sep(compare_to[:total_sales])
+      perc = 100.0 * compare_to[:total_sales] /
+                (compare_to[:total_sales] + base_line[:total_sales])
+      print thou_sep(sprintf("           %8.2f\n", perc))
+    end
+  end
+end
+
+desc 'Excel report'
+arg :date, :optional
+command :xls, :excel do |c|
+  c.desc 'Inactive terminals (instants)'
+  c.switch [:i, :inactive]
+
+  c.desc 'Top terminals count 3|5|10'
+  c.flag :top, must_match: /^3|5|10$/, default_value: '10'
+
+  c.action do |global_opts, opts, args|
+    raise "Invalid argument #{ args }" if args.length != 0 and args[0] !~ RE_YMD
+    day = if args.length == 0
+            Date.today - 1
+          else
+            Date.parse args[0]
+          end
+
+    # create the new workbook and set some properties
+    book = Spreadsheet::Excel::Workbook.new
+    book.add_font Spreadsheet::Font.new('Droid Sans')
+
+    Comp.create_compare_sheet   book, day
+    Comp.create_share_sheet     book, day
+    Comp.create_remainder_sheet book, day
+
+    # take care if last day of month
+    unless day == Comp.last_day_of_month(day)
+      puts "#{ day.strftime YMD_FMT } not last day of month!"
+    else
+      puts "It's the last day of month!"
+      Comp.create_compare_months_sheet book, day
+    end
+
+    Comp.create_weekly_sheet    book, day
+    Comp.create_monthly_sheet   book, day
+    Comp.create_inactive_sheets book, day if opts[:inactive]
+
+    # added 
+    Comp.create_top_terminals_sheet book, day, top_count: opts[:top]
+    Comp.create_sales_per_city_sheet book, day
+
+    excel_file = File.expand_path "../../data/#{ day.strftime YMD_FMT }.xls", __FILE__
+    book.write excel_file
+  end
+end
+
+desc 'WriteExcel report'
+arg :date, :optional
+command :wxls, :wexcel, :writeexcel do |c|
+  c.desc 'Inactive terminals (instants)'
+  c.switch [:i, :inactive]
+
+  c.desc 'Top terminals count 3|5|10'
+  c.flag :top, must_match: /^3|5|10$/, default_value: '10'
+
+  c.action do |global_opts, opts, args|
+    raise "Invalid argument #{ args }" if args.length != 0 and args[0] !~ RE_YMD
+    day = if args.length == 0
+            Date.today - 1
+          else
+            Date.parse args[0]
+          end
+
+    # create the new workbook and set some properties
+    book = WriteExcel.new File.expand_path("../../data/#{ day.strftime YMD_FMT }.xls",
+            __FILE__)
+    book.set_properties title: "Извештај за #{ Comp::MONTH_NAMES_MK[day.month] } #{ day.year }", 
+      subject: day.strftime(YMD_FMT), author: 'Andreja Tonevski', company: 'DLM',
+      comments: 'Created with ruby writeexcel gem'
+    Comp.we_create_compare_sheet    book, day
+    Comp.we_create_share_sheet      book, day
+    Comp.we_create_remainder_sheet  book, day
+
+    book.close # write content
+  end
+end
+
+desc 'xlsx report using axslx gem'
+arg :date, :optional
+command :xlsx, :x do |c|
+  c.desc 'Inactive terminals (instants)'
+  c.switch [:i, :inactive]
+
+  c.desc 'Top terminals count 3|5|10'
+  c.flag :top, must_match: /^3|5|10$/, default_value: '10'
+
+  c.action do |global_opts, opts, args|
+    raise "Invalid argument #{ args }" if args.length != 0 and args[0] !~ RE_YMD
+    day = if args.length == 0
+            Date.today - 1
+          else
+            Date.parse args[0]
+          end
+    Axlsx::Package.new author: 'Andreja Tonevski', title: 'The title',
+      subject: 'The subject' do |p|
+
+      # create the sheets
+      Comp.x_create_compare_sheet   p.workbook, day 
+      Comp.x_create_share_sheet     p.workbook, day 
+      Comp.x_create_remainder_sheet p.workbook, day
+
+      # take care if last day of month
+      unless day == Comp.last_day_of_month(day)
+        puts "#{ day.strftime YMD_FMT } not last day of month!"
+      else
+        puts "It's the last day of month!"
+        Comp.x_create_compare_months_sheet p.workbook, day
+      end
+
+      Comp.x_create_weekly_sheet              p.workbook, day
+      Comp.x_create_instants_terminals_sheet  p.workbook, day
+
+      Comp.x_create_top_terminals_sheet   p.workbook, day,
+        top_count: opts[:top]
+      Comp.x_create_sales_per_city_sheet  p.workbook, day
+
+      p.serialize File.expand_path("../../data/#{ day.strftime YMD_FMT }.xlsx",
+            __FILE__)
+    end
+  end
+end
+
+    # create the new workbook and set some properties
+pre do |global,command,options,args|
+  # Pre logic here
+  # Return true to proceed; false to abort and not call the
+  # chosen command
+  # Use skips_pre before a command to skip this block
+  # on that command only
+  true
+end
+
+post do |global,command,options,args|
+  # Post logic here
+  # Use skips_post before a command to skip this
+  # block on that command only
+end
+
+on_error do |exception|
+  # Error logic here
+  # return false to skip default error handling
+  true
+end
+
+exit run(ARGV)
+
+__END__
+
+TODO:
+  - monthly bar chart consider stacked with instants, lotto, bingo, toto (firstlly whole sales)
+
+DONE
+  - compare month sales when end of month
+  - xls command: charts are created via google charts
+  - finished weekly sales worksheet
+  - consider creating pie charts for reminder cheet 
+  - full working period command

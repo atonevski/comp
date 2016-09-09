@@ -1,0 +1,6 @@
+= comp
+
+Describe your project here
+
+:include:comp.rdoc
+

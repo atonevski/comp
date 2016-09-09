@@ -1,0 +1,5 @@
+development:
+  adapter: 'sqlite3'
+  database: '/home/and/Scripts/Ruby/dsales/db/dsales.db'
+#  database: '/home/atonevski/scripts/ruby/comp/db/dsales.db'
+

@@ -1,0 +1,5 @@
+= comp
+
+Generate this with
+    comp rdoc
+After you have described your command line interface

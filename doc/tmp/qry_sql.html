@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<meta charset="UTF-8">
+
+<title>qry.sql - RDoc Documentation</title>
+
+<script type="text/javascript">
+  var rdoc_rel_prefix = "../";
+</script>
+
+<script src="../js/jquery.js"></script>
+<script src="../js/darkfish.js"></script>
+
+<link href="../css/fonts.css" rel="stylesheet">
+<link href="../css/rdoc.css" rel="stylesheet">
+
+
+
+<body id="top" role="document" class="file">
+<nav role="navigation">
+  <div id="project-navigation">
+    <div id="home-section" role="region" title="Quick navigation" class="nav-section">
+  <h2>
+    <a href="../index.html" rel="home">Home</a>
+  </h2>
+
+  <div id="table-of-contents-navigation">
+    <a href="../table_of_contents.html#pages">Pages</a>
+    <a href="../table_of_contents.html#classes">Classes</a>
+    <a href="../table_of_contents.html#methods">Methods</a>
+  </div>
+</div>
+
+    <div id="search-section" role="search" class="project-section initially-hidden">
+  <form action="#" method="get" accept-charset="utf-8">
+    <div id="search-field-wrapper">
+      <input id="search-field" role="combobox" aria-label="Search"
+             aria-autocomplete="list" aria-controls="search-results"
+             type="text" name="search" placeholder="Search" spellcheck="false"
+             title="Type to search, Up and Down to navigate, Enter to load">
+    </div>
+
+    <ul id="search-results" aria-label="Search Results"
+        aria-busy="false" aria-expanded="false"
+        aria-atomic="false" class="initially-hidden"></ul>
+  </form>
+</div>
+
+  </div>
+
+  
+
+  <div id="project-metadata">
+    <div id="fileindex-section" class="nav-section">
+  <h3>Pages</h3>
+
+  <ul class="link-list">
+  
+    <li><a href="../Gemfile.html">Gemfile</a>
+  
+    <li><a href="../Gemfile_lock.html">Gemfile.lock</a>
+  
+    <li><a href="../README_rdoc.html">README</a>
+  
+    <li><a href="../Rakefile.html">Rakefile</a>
+  
+    <li><a href="../comp_gemspec.html">comp.gemspec</a>
+  
+    <li><a href="../comp_rdoc.html">comp</a>
+  
+    <li><a href="../features/comp_feature.html">comp.feature</a>
+  
+    <li><a href="../tmp/by-game-type_sql.html">by-game-type.sql</a>
+  
+    <li><a href="../tmp/qry_sql.html">qry.sql</a>
+  
+  </ul>
+</div>
+
+  </div>
+</nav>
+
+<main role="main" aria-label="Page tmp/qry.sql">
+
+<p>— DLM SELECT</p>
+
+<pre>g.id                    AS game_id,
+g.name                  AS name,
+CASE 
+  WHEN g.type = &#39;INSTANT&#39; THEN 1
+  ELSE 0
+END                     AS is_instant,
+CASE
+  WHEN g.parent IS NOT NULL THEN g.parent
+  ELSE g.id
+END                     AS parent_id,
+SUM(s.sales)            AS sales,
+SUM(s.sales) / g.price  AS qty,
+COUNT(DISTINCT t.id)    AS tcount</pre>
+
+<p>FROM</p>
+
+<pre class="ruby"><span class="ruby-identifier">sales</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">s</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">games</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">g</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">game_id</span> = <span class="ruby-identifier">g</span>.<span class="ruby-identifier">id</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">terminals</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">t</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">terminal_id</span> = <span class="ruby-identifier">t</span>.<span class="ruby-identifier">id</span>
+</pre>
+
+<p>WHERE</p>
+
+<pre>s.date BETWEEN &#39;2016-02-01&#39; AND &#39;2016-02-29&#39;
+AND t.agent_id &lt;&gt; 225</pre>
+
+<p>GROUP BY g.id HAVING qty &gt; 0 ORDER BY is_instant, parent_id, g.id</p>
+
+<p>SELECT</p>
+
+<pre>CASE 
+  WHEN g.type = &#39;INSTANT&#39; THEN 1
+  ELSE 0
+END                     AS is_instant,
+SUM(s.sales)            AS sales,
+COUNT(DISTINCT t.id)    AS tcount</pre>
+
+<p>FROM</p>
+
+<pre class="ruby"><span class="ruby-identifier">sales</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">s</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">games</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">g</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">game_id</span> = <span class="ruby-identifier">g</span>.<span class="ruby-identifier">id</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">terminals</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">t</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">terminal_id</span> = <span class="ruby-identifier">t</span>.<span class="ruby-identifier">id</span>
+</pre>
+
+<p>WHERE</p>
+
+<pre>s.date BETWEEN &#39;2016-02-01&#39; AND &#39;2016-02-29&#39;
+AND t.agent_id &lt;&gt; 225
+AND s.sales &gt; 0</pre>
+
+<p>GROUP BY is_instant ORDER BY is_instant</p>
+
+<p>SELECT</p>
+
+<pre>SUM(s.sales),
+COUNT(DISTINCT t.id)</pre>
+
+<p>FROM</p>
+
+<pre class="ruby"><span class="ruby-identifier">sales</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">s</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">terminals</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">t</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">terminal_id</span> = <span class="ruby-identifier">t</span>.<span class="ruby-identifier">id</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">games</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">g</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">game_id</span> = <span class="ruby-identifier">g</span>.<span class="ruby-identifier">id</span>
+</pre>
+
+<p>WHERE</p>
+
+<pre>s.date BETWEEN &#39;2016-02-01&#39; AND &#39;2016-02-29&#39;
+AND t.agent_id &lt;&gt; 225
+AND s.sales &gt; 0
+AND g.type &lt;&gt; &#39;INSTANT&#39;</pre>
+
+<p>SELECT</p>
+
+<pre>SUM(s.sales),
+COUNT(DISTINCT t.id)</pre>
+
+<p>FROM</p>
+
+<pre class="ruby"><span class="ruby-identifier">sales</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">s</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">terminals</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">t</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">terminal_id</span> = <span class="ruby-identifier">t</span>.<span class="ruby-identifier">id</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">games</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">g</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">game_id</span> = <span class="ruby-identifier">g</span>.<span class="ruby-identifier">id</span>
+</pre>
+
+<p>WHERE</p>
+
+<pre>s.date BETWEEN &#39;2016-02-01&#39; AND &#39;2016-02-29&#39;
+AND t.agent_id = 256
+AND s.sales &gt; 0</pre>
+
+<p>— DLM SELECT</p>
+
+<pre>g.id                    AS game_id,
+g.name                  AS name,
+g.price                 AS price,
+CASE 
+  WHEN g.type = &#39;INSTANT&#39; THEN 1
+  ELSE 0
+END                     AS is_instant,
+CASE
+  WHEN g.parent IS NOT NULL THEN g.parent
+  ELSE g.id
+END                     AS parent_id,
+SUM(s.sales)            AS sales,
+SUM(s.sales) / g.price  AS qty,
+COUNT(DISTINCT t.id)    AS tcount</pre>
+
+<p>FROM</p>
+
+<pre class="ruby"><span class="ruby-identifier">sales</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">s</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">games</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">g</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">game_id</span> = <span class="ruby-identifier">g</span>.<span class="ruby-identifier">id</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">terminals</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">t</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">terminal_id</span> = <span class="ruby-identifier">t</span>.<span class="ruby-identifier">id</span>
+</pre>
+
+<p>WHERE</p>
+
+<pre>s.date BETWEEN &#39;2016-02-01&#39; AND &#39;2016-02-29&#39;
+AND t.agent_id &lt;&gt; 225</pre>
+
+<p>GROUP BY g.id HAVING qty &gt; 0 ORDER BY is_instant, parent_id, g.id</p>
+
+<p>— marketing SELECT</p>
+
+<pre>g.id                    AS game_id,
+g.name                  AS name,
+g.price                 AS price,
+CASE 
+  WHEN g.type = &#39;INSTANT&#39; THEN 1
+  ELSE 0
+END                     AS is_instant,
+CASE
+  WHEN g.parent IS NOT NULL THEN g.parent
+  ELSE g.id
+END                     AS parent_id,
+SUM(s.sales)            AS sales,
+SUM(s.sales) / g.price  AS qty,
+COUNT(DISTINCT t.id)    AS tcount</pre>
+
+<p>FROM</p>
+
+<pre class="ruby"><span class="ruby-identifier">sales</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">s</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">games</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">g</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">game_id</span> = <span class="ruby-identifier">g</span>.<span class="ruby-identifier">id</span>
+<span class="ruby-constant">INNER</span> <span class="ruby-constant">JOIN</span> <span class="ruby-identifier">terminals</span> <span class="ruby-constant">AS</span> <span class="ruby-identifier">t</span>
+  <span class="ruby-constant">ON</span> <span class="ruby-identifier">s</span>.<span class="ruby-identifier">terminal_id</span> = <span class="ruby-identifier">t</span>.<span class="ruby-identifier">id</span>
+</pre>
+
+<p>WHERE</p>
+
+<pre>s.date BETWEEN &#39;2016-02-01&#39; AND &#39;2016-02-29&#39;
+AND t.agent_id = 225</pre>
+
+<p>GROUP BY g.id HAVING qty &gt; 0 ORDER BY is_instant, parent_id, g.id</p>
+</main>
+
+
+
+<footer id="validator-badges" role="contentinfo">
+  <p><a href="http://validator.w3.org/check/referer">Validate</a>
+  <p>Generated by <a href="http://docs.seattlerb.org/rdoc/">RDoc</a> 4.2.2.
+  <p>Based on <a href="http://deveiate.org/projects/Darkfish-RDoc/">Darkfish</a> by <a href="http://deveiate.org">Michael Granger</a>.
+</footer>
+
