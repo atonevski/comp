@@ -304,8 +304,8 @@ module Comp
 
       r = [sales_a.length, sales_b.length, sales_c.length].max + 7
       h = 15
-      sheet.add_chart Axlsx::Bar3DChart,
-        start_at: 'A' + r.to_s, end_at: 'G' + (r + h - 1).to_s do |chart|
+      sheet.add_chart Axlsx::Bar3DChart, bg_color: '88FF88',
+        start_at: 'A' + r.to_s, end_at: 'I' + (r + h - 1).to_s do |chart|
         chart.title     = 'Споредба по 7 денa'
         chart.grouping = :stacked
         chart.add_series data: sheet["C#{r + 1}:E#{r + 1}"],
@@ -317,8 +317,8 @@ module Comp
         # chart.valAxis.title = 'Y Axis' 
         chart.show_legend = true
         chart.bar_dir = :col
-        chart.valAxis.gridlines = false
-        chart.catAxis.gridlines = false
+        chart.valAxis.gridlines = true
+        chart.catAxis.gridlines = true
         chart.val_axis.format_code = "#,###"
       end
 
@@ -836,6 +836,13 @@ module Comp
           having('week_number <= :week_number', week_number: last_week).
           order('monday')
 
+    wsales_before2 = Sale.select(qry).
+          joins('AS s').
+          where('substr(sunday, 1, 4) = :year_s', year_s: (day.year - 2).to_s).
+          group('monday', 'sunday').
+          having('week_number <= :week_number', week_number: last_week).
+          order('monday')
+
     # formating
     fmt_merge = book.styles.add_style sz: 12,
       alignment: { horizontal: :center, vertical: :center },
@@ -858,39 +865,58 @@ module Comp
     # render worksheet
     book.add_worksheet name: 'Неделно' do |sheet|
       # cur & year before headers
-      sheet.add_row [ "#{ day.year }", *['']*3, nil,
-        "#{ day.year - 1 }", *['']*4],
-        style: [fmt_merge]*4 + [nil] + [fmt_merge]*4 + [nil]
+      sheet.add_row [
+        "#{ day.year }", *['']*3, nil,
+        "#{ day.year - 1 }", *['']*3, nil,
+        "#{ day.year - 2 }", *['']*3, nil, ],
+        style: [fmt_merge]*4 + [nil] +
+               [fmt_merge]*4 + [nil] +
+               [fmt_merge]*4 + [nil]
       sheet.merge_cells 'A1:D1'
       sheet.merge_cells 'F1:I1'
+      sheet.merge_cells 'K1:N1'
+
       sheet.add_row [ "седмица", "понед.", "недела", "уплата", "",
+                      "седмица", "понед.", "недела", "уплата", "",
                       "седмица", "понед.", "недела", "уплата", ],
-        style: [fmt_hdr_c]*4 + [nil] + [fmt_hdr_c]*4 #, height: 34
+        style: [fmt_hdr_c]*4 + [nil] + [fmt_hdr_c]*4 +
+               [nil] + [fmt_hdr_c]*4 #, height: 34
 
       # fix column widths
-      sheet.column_widths *[10]*4, 6, *[10]*4, 6
+      sheet.column_widths *[10]*4, 6, *[10]*4, 6, *[10]*4, 6
 
       wsales_now.each_with_index do |s, idx|
-        b = wsales_before[idx]
-        sheet.add_row [s.week_number, Date.parse(s.monday), 
+        b  = wsales_before[idx]
+        b2 = wsales_before2[idx]
+        sheet.add_row [
+          s.week_number, Date.parse(s.monday), 
           Date.parse(s.sunday), s.sales, nil,
+
           b.week_number, Date.parse(b.monday), 
-          Date.parse(b.sunday), b.sales, nil],
-          style: [fmt_a, fmt_b, fmt_c, fmt_d, nil, fmt_a, fmt_b, fmt_c, fmt_d, nil],
+          Date.parse(b.sunday), b.sales, nil,
+
+          b2.week_number, Date.parse(b2.monday), 
+          Date.parse(b2.sunday), b2.sales, nil],
+          style: [fmt_a, fmt_b, fmt_c, fmt_d, nil,
+           fmt_a, fmt_b, fmt_c, fmt_d, nil,
+           fmt_a, fmt_b, fmt_c, fmt_d, nil],
           height: 12
       end
 
       # render chart
       sheet.add_chart Axlsx::LineChart, 
-        start_at: 'K1', end_at: 'T24' do |chart|
+        start_at: 'P1', end_at: 'Y24' do |chart|
          
-        chart.title = "Неделен промет #{ day.year }/#{ day.year - 1}"
+        chart.title = "Неделен промет #{ day.year }/#{ day.year - 1}/#{ day.year - 2 }"
         chart.add_series data: sheet["D3:D#{ wsales_now.length + 2 }"],
           labels: sheet["A3:A#{ wsales_now.length + 2 }"],
           color: CAT10[0], title: sheet['A1']
         chart.add_series data: sheet["I3:I#{ wsales_now.length + 2 }"],
           # labels: sheet["A3:A#{ wsales_now.length + 2 }"],
           color: CAT10[1], title: sheet['F1']
+        chart.add_series data: sheet["N3:N#{ wsales_now.length + 2 }"],
+          # labels: sheet["A3:A#{ wsales_now.length + 2 }"],
+          color: CAT10[2], title: sheet['K1']
         chart.valAxis.gridlines = false
         chart.catAxis.gridlines = false
         chart.val_axis.format_code = "#,###"
@@ -1435,7 +1461,7 @@ module Comp
         " #{ day.strftime DMY }"], style: fmt_merge, height: 18
       sheet.add_row ["Вкупна уплата: #{ thou_sep(total_sales.to_i) }"],
         style: fmt_merge, height: 18
-      sheet.add_row [nil]
+      sheet.add_row [nil], style: fmt_merge, height: 18
       sheet.merge_cells 'A1:E1'
       sheet.merge_cells 'A2:E2'
 
@@ -1478,6 +1504,10 @@ module Comp
         p.y_split = 4
         p.active_pane = :bottom_right
       end
+
+      # selection
+      sheet.sheet_view {|v| v.add_selection(:bottom_right, 
+        { active_cell: 'A3', sqref: 'A3' })}
     end
   end # top terminals
 
@@ -1582,7 +1612,7 @@ module Comp
         " #{ day.strftime DMY }"], style: fmt_merge, height: 18
       sheet.add_row ["Вкупна уплата: #{ thou_sep(total_sales.to_i) }"],
         style: fmt_merge, height: 18
-      sheet.add_row [nil]
+      sheet.add_row [nil], style: fmt_merge, height: 18
       sheet.merge_cells 'A1:I1'
       sheet.merge_cells 'A2:I2'
       
@@ -1600,18 +1630,20 @@ module Comp
           style: [fmt_city, fmt_sales, fmt_share, fmt_count, fmt_min,
             fmt_avg, fmt_max, fmt_id, fmt_name], height: 12
       end
-      # selection
-      sheet.sheet_view {|v| v.add_selection(:top_left, { active_cell: 'A3' })}
-
       # fix column widths
       sheet.column_widths 20, 10, 8, 6, 8, 9, 9, 8, 35
 
+      # freeze pane
       sheet.sheet_view.pane do |p|
         p.top_left_cell = 'A4'
         p.state = :frozen_split
         p.y_split = 4
         p.active_pane = :bottom_right
       end
+
+      # selection
+      sheet.sheet_view {|v| v.add_selection(:bottom_right, 
+        { active_cell: 'A3', sqref: 'A3' })}
     end
   end # sales per city
 end
